@@ -11,6 +11,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "schedules")
@@ -22,6 +24,8 @@ data class Schedule(
     val triggerAt: Long,
     val daily: Boolean,
     val enabled: Boolean = true,
+    /** Package to open for Target.OTHER; empty means ask when sending. */
+    val app: String = "",
 )
 
 @Dao
@@ -45,16 +49,22 @@ interface ScheduleDao {
     suspend fun delete(schedule: Schedule)
 }
 
-@Database(entities = [Schedule::class], version = 1, exportSchema = false)
+@Database(entities = [Schedule::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun schedules(): ScheduleDao
 
     companion object {
+        private val addApp = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE schedules ADD COLUMN app TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         @Volatile private var instance: AppDatabase? = null
 
         fun dao(context: Context): ScheduleDao = (instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "schedules.db")
-                .build().also { instance = it }
+                .addMigrations(addApp).build().also { instance = it }
         }).schedules()
     }
 }

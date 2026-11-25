@@ -4,6 +4,7 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
@@ -95,7 +98,7 @@ fun ScheduleScreen(
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("${s.target.label} ${s.phone}", style = MaterialTheme.typography.titleMedium)
+                                Text("${targetName(context, s)} ${s.phone}", style = MaterialTheme.typography.titleMedium)
                                 Text(formatTime(s.triggerAt) + if (s.daily) ", daily" else "")
                             }
                             Switch(
@@ -161,6 +164,9 @@ private fun AddDialog(onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
     var daily by rememberSaveable { mutableStateOf(false) }
     var time by rememberSaveable { mutableStateOf(System.currentTimeMillis() + 60 * 60 * 1000) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
+    var app by rememberSaveable { mutableStateOf("") }
+    var choosingApp by remember { mutableStateOf(false) }
+    val apps = remember { shareApps(context) }
 
     fun pickTime() {
         val current = Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault()).toLocalDateTime()
@@ -196,6 +202,24 @@ private fun AddDialog(onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
                         singleLine = true,
                     )
                 }
+                if (target == Target.OTHER) {
+                    Box {
+                        OutlinedButton(onClick = { choosingApp = true }) {
+                            Text("App: " + (apps.firstOrNull { it.first == app }?.second ?: "ask when sending"))
+                        }
+                        DropdownMenu(expanded = choosingApp, onDismissRequest = { choosingApp = false }) {
+                            (listOf("" to "Ask when sending") + apps).forEach { (id, name) ->
+                                DropdownMenuItem(
+                                    text = { Text(name) },
+                                    onClick = {
+                                        app = id
+                                        choosingApp = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = message,
                     onValueChange = { message = it.take(1000) },
@@ -218,7 +242,13 @@ private fun AddDialog(onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
                 error = validate(target, phone, message, time, System.currentTimeMillis())
                 if (error == null) {
                     val number = if (target.needsPhone) cleanPhone(phone) else ""
-                    onSave(Schedule(target = target, phone = number, message = message, triggerAt = time, daily = daily))
+                    val chosen = if (target == Target.OTHER) app else ""
+                    onSave(
+                        Schedule(
+                            target = target, phone = number, message = message,
+                            triggerAt = time, daily = daily, app = chosen,
+                        ),
+                    )
                 }
             }) { Text("Save") }
         },

@@ -15,15 +15,38 @@ import androidx.core.net.toUri
 
 private const val CHANNEL = "due_messages"
 
+private fun shareText() = Intent(Intent.ACTION_SEND).setType("text/plain")
+
+/** Installed apps that accept shared text, as package name to visible name. */
+fun shareApps(context: Context): List<Pair<String, String>> {
+    val pm = context.packageManager
+    return pm.queryIntentActivities(shareText(), 0)
+        .filter { it.activityInfo.packageName != context.packageName }
+        .distinctBy { it.activityInfo.packageName }
+        .map { it.activityInfo.packageName to it.activityInfo.applicationInfo.loadLabel(pm).toString() }
+        .sortedBy { it.second.lowercase() }
+}
+
+fun targetName(context: Context, s: Schedule): String =
+    s.app.takeIf { it.isNotEmpty() }
+        ?.let { id -> shareApps(context).firstOrNull { it.first == id }?.second }
+        ?: s.target.label
+
 /** Opens the other app with the message filled in. The user presses Send there. */
-fun sendIntent(s: Schedule): Intent = when (s.target) {
+fun sendIntent(context: Context, s: Schedule): Intent = when (s.target) {
     Target.WHATSAPP -> Intent(Intent.ACTION_VIEW, whatsAppUrl(s.phone, s.message).toUri())
     Target.SMS -> Intent(Intent.ACTION_SENDTO, "smsto:${cleanPhone(s.phone)}".toUri())
         .putExtra("sms_body", s.message)
-    Target.OTHER -> Intent.createChooser(
-        Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, s.message),
-        "Send with",
-    )
+    Target.OTHER -> {
+        val share = shareText().putExtra(Intent.EXTRA_TEXT, s.message)
+        val direct = Intent(share).setPackage(s.app)
+        // Falls back to the share list if no app was chosen or it has been uninstalled.
+        if (s.app.isNotEmpty() && direct.resolveActivity(context.packageManager) != null) {
+            direct
+        } else {
+            Intent.createChooser(share, "Send with")
+        }
+    }
 }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
 fun notificationsAllowed(context: Context): Boolean =
@@ -41,12 +64,12 @@ fun notifyDue(context: Context, s: Schedule) {
     val open = PendingIntent.getActivity(
         context,
         s.id.toInt(),
-        sendIntent(s),
+        sendIntent(context, s),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
     val notification = NotificationCompat.Builder(context, CHANNEL)
         .setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle("Tap to send via ${s.target.label}")
+        .setContentTitle("Tap to send via ${targetName(context, s)}")
         .setContentText(s.message)
         .setStyle(NotificationCompat.BigTextStyle().bigText(s.message))
         .setPriority(NotificationCompat.PRIORITY_HIGH)

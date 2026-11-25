@@ -9,6 +9,7 @@ filled in, and **you press Send**. The app never sends anything by itself.
 
 - One-time or daily schedules
 - WhatsApp, SMS, or any app that accepts shared text
+- For "Other app", pick an installed app (for example ChatGPT) or choose when sending
 - Turn schedules on and off, delete them, or send one immediately
 - Alarms are restored after reboot, app update and clock changes
 - Data stays on the phone (no internet permission, no backup)

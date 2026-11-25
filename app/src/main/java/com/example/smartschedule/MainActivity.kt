@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
                             open(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, "package:$packageName".toUri()))
                         }
                     },
-                    onSend = { open(sendIntent(it)) },
+                    onSend = { open(sendIntent(this, it)) },
                 )
             }
         }
