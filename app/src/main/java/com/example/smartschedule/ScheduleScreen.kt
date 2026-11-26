@@ -1,8 +1,16 @@
 package com.example.smartschedule
 
+import android.app.Activity
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.media.RingtoneManager
+import android.net.Uri
+import android.provider.Settings
 import android.text.format.DateFormat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +56,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.IntentCompat
+import androidx.core.net.toUri
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -67,22 +77,21 @@ fun ScheduleScreen(
     onAlarmSettings: () -> Unit,
     onSend: (Schedule) -> Unit,
     onAllowSms: () -> Unit,
-    onAccessibilitySettings: () -> Unit,
 ) {
     val context = LocalContext.current.applicationContext
     val dao = remember { AppDatabase.dao(context) }
     val schedules by remember { dao.observe() }.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
-    var adding by rememberSaveable { mutableStateOf(false) }
+    // null: dialog closed, 0: new task, otherwise the id being edited.
+    var editing by rememberSaveable { mutableStateOf<Long?>(null) }
     val notifications = remember(refresh) { notificationsAllowed(context) }
     val exact = remember(refresh) { Alarms.canBeExact(context) }
 
     val sms = remember(refresh) { smsAllowed(context) }
-    val autoPress = remember(refresh) { AutoSendService.instance != null }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Scheduled messages") }) },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = { adding = true }) { Text("Add") } },
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = { editing = 0L }) { Text("Add") } },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -98,16 +107,8 @@ fun ScheduleScreen(
             if (!sms) item {
                 Warning("Allow SMS to send text messages automatically.", onAllowSms, "Allow SMS")
             }
-            if (!autoPress) item {
-                Warning(
-                    "To send automatically in other apps, turn on Smart Schedule under Accessibility. " +
-                        "This lets it read the screen and press Send in the chosen app. " +
-                        "The phone must be on and unlocked.",
-                    onAccessibilitySettings,
-                )
-            }
             if (schedules.isEmpty()) item {
-                Text("Nothing scheduled. Tap Add. If a message cannot be sent automatically, you get a notification.")
+                Text("Nothing scheduled. Tap Add. SMS is sent automatically. For other apps, tap the notification and press Send.")
             }
             items(schedules, key = { it.id }) { s ->
                 Card(Modifier.fillMaxWidth()) {
@@ -134,6 +135,7 @@ fun ScheduleScreen(
                         Text(s.message, maxLines = 3)
                         Row {
                             TextButton(onClick = { onSend(s) }) { Text("Send now") }
+                            TextButton(onClick = { editing = s.id }) { Text("Edit") }
                             TextButton(onClick = {
                                 scope.launch {
                                     Alarms.cancel(context, s.id)
@@ -147,14 +149,21 @@ fun ScheduleScreen(
         }
     }
 
-    if (adding) {
-        AddDialog(
-            onDismiss = { adding = false },
+    val existing = schedules.firstOrNull { it.id == editing }
+    if (editing == 0L || existing != null) {
+        TaskDialog(
+            existing = existing,
+            onDismiss = { editing = null },
             onSave = { schedule ->
-                adding = false
+                editing = null
                 scope.launch {
-                    val id = dao.insert(schedule)
-                    Alarms.sync(context, schedule.copy(id = id))
+                    val saved = if (schedule.id == 0L) {
+                        schedule.copy(id = dao.insert(schedule))
+                    } else {
+                        dao.update(schedule)
+                        schedule
+                    }
+                    Alarms.sync(context, saved)
                 }
             },
         )
@@ -172,17 +181,39 @@ private fun Warning(text: String, onFix: () -> Unit, action: String = "Open sett
 }
 
 @Composable
-private fun AddDialog(onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
+private fun TaskDialog(existing: Schedule?, onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
     val context = LocalContext.current
-    var target by rememberSaveable { mutableStateOf(Target.WHATSAPP) }
-    var phone by rememberSaveable { mutableStateOf("") }
-    var message by rememberSaveable { mutableStateOf("") }
-    var daily by rememberSaveable { mutableStateOf(false) }
-    var time by rememberSaveable { mutableStateOf(System.currentTimeMillis() + 60 * 60 * 1000) }
+    var target by rememberSaveable { mutableStateOf(existing?.target ?: Target.WHATSAPP) }
+    var phone by rememberSaveable { mutableStateOf(existing?.phone.orEmpty()) }
+    var message by rememberSaveable { mutableStateOf(existing?.message.orEmpty()) }
+    var daily by rememberSaveable { mutableStateOf(existing?.daily ?: false) }
+    var time by rememberSaveable { mutableStateOf(existing?.triggerAt ?: (System.currentTimeMillis() + 60 * 60 * 1000)) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
-    var app by rememberSaveable { mutableStateOf("") }
+    var app by rememberSaveable { mutableStateOf(existing?.app.orEmpty()) }
+    var sound by rememberSaveable { mutableStateOf(existing?.sound.orEmpty()) }
     var choosingApp by remember { mutableStateOf(false) }
     val apps = remember { shareApps(context) }
+
+    val soundPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val data = result.data
+        if (result.resultCode == Activity.RESULT_OK && data != null) {
+            val uri = IntentCompat.getParcelableExtra(data, RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            sound = if (uri == null || uri == Settings.System.DEFAULT_NOTIFICATION_URI) "" else uri.toString()
+        }
+    }
+
+    fun pickSound() {
+        val current = if (sound.isEmpty()) Settings.System.DEFAULT_NOTIFICATION_URI else sound.toUri()
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, current)
+        try {
+            soundPicker.launch(intent)
+        } catch (e: ActivityNotFoundException) {
+            error = "This phone has no sound picker"
+        }
+    }
 
     fun pickTime() {
         val current = Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault()).toLocalDateTime()
@@ -196,7 +227,7 @@ private fun AddDialog(onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New message") },
+        title = { Text(if (existing == null) "New task" else "Edit task") },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -243,6 +274,7 @@ private fun AddDialog(onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
                     minLines = 3,
                 )
                 OutlinedButton(onClick = ::pickTime) { Text(formatTime(time)) }
+                OutlinedButton(onClick = ::pickSound) { Text("Sound: " + soundName(context, sound)) }
                 Row(
                     modifier = Modifier.toggleable(value = daily, onValueChange = { daily = it }),
                     verticalAlignment = Alignment.CenterVertically,
@@ -262,8 +294,8 @@ private fun AddDialog(onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
                     val chosen = if (target == Target.OTHER) app else ""
                     onSave(
                         Schedule(
-                            target = target, phone = number, message = message,
-                            triggerAt = time, daily = daily, app = chosen,
+                            id = existing?.id ?: 0, target = target, phone = number, message = message,
+                            triggerAt = time, daily = daily, app = chosen, sound = sound,
                         ),
                     )
                 }

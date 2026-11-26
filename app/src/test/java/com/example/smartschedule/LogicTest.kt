@@ -40,14 +40,6 @@ class LogicTest {
     }
 
     @Test
-    fun onlyRealSendButtonsMatch() {
-        assertTrue(isSendButton("Send", null))
-        assertTrue(isSendButton(null, "com.whatsapp:id/send"))
-        assertFalse(isSendButton("Send money", "app:id/send_money"))
-        assertFalse(isSendButton(null, null))
-    }
-
-    @Test
     fun oldMessagesAreNotAutoSent() {
         assertFalse(tooLateToAutoSend(0, 60_000))
         assertTrue(tooLateToAutoSend(0, 3_600_000))

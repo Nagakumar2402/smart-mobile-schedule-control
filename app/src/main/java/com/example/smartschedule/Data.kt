@@ -26,6 +26,8 @@ data class Schedule(
     val enabled: Boolean = true,
     /** Package to open for Target.OTHER; empty means ask when sending. */
     val app: String = "",
+    /** Notification sound URI; empty means the phone's default. */
+    val sound: String = "",
 )
 
 @Dao
@@ -49,7 +51,7 @@ interface ScheduleDao {
     suspend fun delete(schedule: Schedule)
 }
 
-@Database(entities = [Schedule::class], version = 2, exportSchema = false)
+@Database(entities = [Schedule::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun schedules(): ScheduleDao
 
@@ -60,11 +62,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val addSound = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE schedules ADD COLUMN sound TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         @Volatile private var instance: AppDatabase? = null
 
         fun dao(context: Context): ScheduleDao = (instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "schedules.db")
-                .addMigrations(addApp).build().also { instance = it }
+                .addMigrations(addApp, addSound).build().also { instance = it }
         }).schedules()
     }
 }

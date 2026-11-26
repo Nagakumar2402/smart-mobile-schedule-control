@@ -2,30 +2,25 @@
 
 Schedule a message now and send it from WhatsApp, SMS or another app at the right time.
 
-At the scheduled time the app sends automatically where it can:
+At the scheduled time:
 
-| Target | Automatic when |
+| Target | What happens |
 |---|---|
-| SMS | SMS permission is allowed |
-| WhatsApp, or a chosen app such as ChatGPT | The accessibility service is on and the phone is on and unlocked |
+| SMS | Sent automatically if SMS permission is allowed |
+| WhatsApp, or a chosen app such as ChatGPT | A notification rings; tap it and press Send |
 
-The app's notifications are silent. Sounds made by the other app are set in that app.
-
-Otherwise, or if the message is more than 15 minutes late, you get a notification and send it yourself.
-Automatic pressing depends on the other app's screen (English "Send" buttons) and can stop working
-when that app changes. WhatsApp's terms restrict automated sending and may lead to a ban.
-This app is meant for personal sideloading; Google Play restricts both permissions.
+A notification also rings if an SMS fails or is more than 15 minutes late.
+The app does not use Accessibility.
 
 ## Features
 
 - One-time or daily schedules
+- Edit a task, and choose its notification sound
 - WhatsApp, SMS, or any app that accepts shared text
 - For "Other app", pick an installed app (for example ChatGPT)
 - Turn schedules on and off, delete them, or send one immediately
 - Alarms are restored after reboot, app update and clock changes
 - Data stays on the phone (no internet permission, no backup)
-
-There is no editing yet: delete the schedule and add it again.
 
 ## Android requirements
 
@@ -70,8 +65,7 @@ an older one. Uninstall the old app first (this deletes your schedules).
 ## Permissions
 
 - **SMS:** tap **Allow SMS** in the app. Carrier charges apply.
-- **Accessibility:** Settings → Accessibility → Smart Schedule → On.
-- If either is greyed out or blocked: Settings → Apps → Smart Schedule → ⋮ → **Allow restricted settings**.
+- If SMS is greyed out or blocked: Settings → Apps → Smart Schedule → ⋮ → **Allow restricted settings**.
 - **Notifications:** allow when asked, or Settings → Apps → Smart Schedule → Notifications.
 - **Exact alarms** (Android 12+): tap the warning in the app, or Settings → Apps →
   Special app access → Alarms & reminders. Without it reminders can be late.

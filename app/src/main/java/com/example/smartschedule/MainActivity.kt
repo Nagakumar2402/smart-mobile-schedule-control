@@ -57,7 +57,6 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onAllowSms = { askSms.launch(Manifest.permission.SEND_SMS) },
-                    onAccessibilitySettings = { open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
                     onSend = { open(sendIntent(this, it)) },
                 )
             }

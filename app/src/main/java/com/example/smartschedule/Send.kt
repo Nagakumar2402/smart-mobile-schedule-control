@@ -7,14 +7,17 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 
-// A new id, because Android will not lower the importance of an existing channel.
-private const val CHANNEL = "silent_status"
+
+// A new id, because Android will not raise the importance of an existing channel.
+private const val CHANNEL = "message_ready"
 
 private fun shareText() = Intent(Intent.ACTION_SEND).setType("text/plain")
 
@@ -50,6 +53,13 @@ fun sendIntent(context: Context, s: Schedule): Intent = when (s.target) {
     }
 }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
+fun soundName(context: Context, sound: String): String =
+    if (sound.isEmpty()) {
+        "Default"
+    } else {
+        RingtoneManager.getRingtone(context, sound.toUri())?.getTitle(context) ?: "Custom"
+    }
+
 fun notificationsAllowed(context: Context): Boolean =
     NotificationManagerCompat.from(context).areNotificationsEnabled()
 
@@ -60,24 +70,30 @@ fun notifyDue(context: Context, s: Schedule, title: String? = null) {
     ) return
 
     val manager = context.getSystemService(NotificationManager::class.java)
-    manager.deleteNotificationChannel("due_messages")
-    // Low importance means no sound and no vibration.
-    manager.createNotificationChannel(
-        NotificationChannel(CHANNEL, "Send status (silent)", NotificationManager.IMPORTANCE_LOW),
-    )
+    manager.deleteNotificationChannel("silent_status")
+    // Android ties a sound to a channel, so each chosen sound gets its own. High importance makes it ring.
+    val channelId = if (s.sound.isEmpty()) CHANNEL else "$CHANNEL:${s.sound}"
+    val name = if (s.sound.isEmpty()) "Message due" else "Message due: ${soundName(context, s.sound)}"
+    val channel = NotificationChannel(channelId, name, NotificationManager.IMPORTANCE_HIGH)
+    if (s.sound.isNotEmpty()) {
+        channel.setSound(
+            s.sound.toUri(),
+            AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build(),
+        )
+    }
+    manager.createNotificationChannel(channel)
     val open = PendingIntent.getActivity(
         context,
         s.id.toInt(),
         sendIntent(context, s),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
-    val notification = NotificationCompat.Builder(context, CHANNEL)
+    val notification = NotificationCompat.Builder(context, channelId)
         .setSmallIcon(R.drawable.ic_notification)
         .setContentTitle(title ?: "Tap to send via ${targetName(context, s)}")
         .setContentText(s.message)
         .setStyle(NotificationCompat.BigTextStyle().bigText(s.message))
-        .setPriority(NotificationCompat.PRIORITY_LOW)
-        .setSilent(true)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
         .setContentIntent(open)
         .setAutoCancel(true)
