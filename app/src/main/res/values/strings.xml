@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Smart Schedule</string>
+    <string name="auto_send_description">Presses Send for your scheduled messages. It reads the screen only while a scheduled message is being sent. Nothing is stored or uploaded.</string>
 </resources>

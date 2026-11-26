@@ -35,6 +35,9 @@ class MainActivity : ComponentActivity() {
                 val askNotifications = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission(),
                 ) { resumes++ }
+                val askSms = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission(),
+                ) { resumes++ }
                 LaunchedEffect(Unit) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -53,6 +56,8 @@ class MainActivity : ComponentActivity() {
                             open(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, "package:$packageName".toUri()))
                         }
                     },
+                    onAllowSms = { askSms.launch(Manifest.permission.SEND_SMS) },
+                    onAccessibilitySettings = { open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
                     onSend = { open(sendIntent(this, it)) },
                 )
             }

@@ -15,6 +15,8 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private const val EXTRA_ID = "schedule_id"
 
@@ -67,7 +69,7 @@ class RearmWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     }
 }
 
-private fun BroadcastReceiver.runAsync(block: suspend () -> Unit) {
+fun BroadcastReceiver.runAsync(block: suspend () -> Unit) {
     val pending = goAsync()
     CoroutineScope(Dispatchers.IO).launch {
         try {
@@ -78,18 +80,25 @@ private fun BroadcastReceiver.runAsync(block: suspend () -> Unit) {
     }
 }
 
+// Stops two deliveries of the same alarm from both sending.
+private val claim = Mutex()
+
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getLongExtra(EXTRA_ID, -1)
         runAsync {
             val dao = AppDatabase.dao(context)
-            val s = dao.byId(id) ?: return@runAsync
-            val now = System.currentTimeMillis()
-            if (!s.enabled || s.triggerAt > now) return@runAsync
-            notifyDue(context, s)
-            val next = if (s.daily) s.copy(triggerAt = nextDaily(s.triggerAt, now)) else s.copy(enabled = false)
-            dao.update(next)
-            Alarms.sync(context, next)
+            // Move the schedule on before sending, so it can never be sent twice.
+            val due = claim.withLock {
+                val s = dao.byId(id) ?: return@withLock null
+                val now = System.currentTimeMillis()
+                if (!s.enabled || s.triggerAt > now) return@withLock null
+                val next = if (s.daily) s.copy(triggerAt = nextDaily(s.triggerAt, now)) else s.copy(enabled = false)
+                dao.update(next)
+                Alarms.sync(context, next)
+                s
+            }
+            due?.let { deliver(context, it) }
         }
     }
 }

@@ -13,7 +13,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 
-private const val CHANNEL = "due_messages"
+// A new id, because Android will not lower the importance of an existing channel.
+private const val CHANNEL = "silent_status"
 
 private fun shareText() = Intent(Intent.ACTION_SEND).setType("text/plain")
 
@@ -32,7 +33,7 @@ fun targetName(context: Context, s: Schedule): String =
         ?.let { id -> shareApps(context).firstOrNull { it.first == id }?.second }
         ?: s.target.label
 
-/** Opens the other app with the message filled in. The user presses Send there. */
+/** Opens the other app with the message filled in. */
 fun sendIntent(context: Context, s: Schedule): Intent = when (s.target) {
     Target.WHATSAPP -> Intent(Intent.ACTION_VIEW, whatsAppUrl(s.phone, s.message).toUri())
     Target.SMS -> Intent(Intent.ACTION_SENDTO, "smsto:${cleanPhone(s.phone)}".toUri())
@@ -52,14 +53,17 @@ fun sendIntent(context: Context, s: Schedule): Intent = when (s.target) {
 fun notificationsAllowed(context: Context): Boolean =
     NotificationManagerCompat.from(context).areNotificationsEnabled()
 
-fun notifyDue(context: Context, s: Schedule) {
+fun notifyDue(context: Context, s: Schedule, title: String? = null) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
         PackageManager.PERMISSION_GRANTED
     ) return
 
-    context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-        NotificationChannel(CHANNEL, "Messages due", NotificationManager.IMPORTANCE_HIGH),
+    val manager = context.getSystemService(NotificationManager::class.java)
+    manager.deleteNotificationChannel("due_messages")
+    // Low importance means no sound and no vibration.
+    manager.createNotificationChannel(
+        NotificationChannel(CHANNEL, "Send status (silent)", NotificationManager.IMPORTANCE_LOW),
     )
     val open = PendingIntent.getActivity(
         context,
@@ -69,10 +73,11 @@ fun notifyDue(context: Context, s: Schedule) {
     )
     val notification = NotificationCompat.Builder(context, CHANNEL)
         .setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle("Tap to send via ${targetName(context, s)}")
+        .setContentTitle(title ?: "Tap to send via ${targetName(context, s)}")
         .setContentText(s.message)
         .setStyle(NotificationCompat.BigTextStyle().bigText(s.message))
-        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .setSilent(true)
         .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
         .setContentIntent(open)
         .setAutoCancel(true)

@@ -3,8 +3,10 @@ package com.example.smartschedule
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LogicTest {
@@ -35,5 +37,19 @@ class LogicTest {
             "https://wa.me/919876543210?text=a%20%26%20b%2Bc",
             whatsAppUrl("+91 98765 43210", "a & b+c"),
         )
+    }
+
+    @Test
+    fun onlyRealSendButtonsMatch() {
+        assertTrue(isSendButton("Send", null))
+        assertTrue(isSendButton(null, "com.whatsapp:id/send"))
+        assertFalse(isSendButton("Send money", "app:id/send_money"))
+        assertFalse(isSendButton(null, null))
+    }
+
+    @Test
+    fun oldMessagesAreNotAutoSent() {
+        assertFalse(tooLateToAutoSend(0, 60_000))
+        assertTrue(tooLateToAutoSend(0, 3_600_000))
     }
 }

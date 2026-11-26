@@ -66,6 +66,8 @@ fun ScheduleScreen(
     onNotificationSettings: () -> Unit,
     onAlarmSettings: () -> Unit,
     onSend: (Schedule) -> Unit,
+    onAllowSms: () -> Unit,
+    onAccessibilitySettings: () -> Unit,
 ) {
     val context = LocalContext.current.applicationContext
     val dao = remember { AppDatabase.dao(context) }
@@ -74,6 +76,9 @@ fun ScheduleScreen(
     var adding by rememberSaveable { mutableStateOf(false) }
     val notifications = remember(refresh) { notificationsAllowed(context) }
     val exact = remember(refresh) { Alarms.canBeExact(context) }
+
+    val sms = remember(refresh) { smsAllowed(context) }
+    val autoPress = remember(refresh) { AutoSendService.instance != null }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Scheduled messages") }) },
@@ -90,8 +95,19 @@ fun ScheduleScreen(
             if (!exact) item {
                 Warning("Exact alarms are off, so reminders may arrive late.", onAlarmSettings)
             }
+            if (!sms) item {
+                Warning("Allow SMS to send text messages automatically.", onAllowSms, "Allow SMS")
+            }
+            if (!autoPress) item {
+                Warning(
+                    "To send automatically in other apps, turn on Smart Schedule under Accessibility. " +
+                        "This lets it read the screen and press Send in the chosen app. " +
+                        "The phone must be on and unlocked.",
+                    onAccessibilitySettings,
+                )
+            }
             if (schedules.isEmpty()) item {
-                Text("Nothing scheduled. Tap Add. At the chosen time you get a notification; tap it and press Send.")
+                Text("Nothing scheduled. Tap Add. If a message cannot be sent automatically, you get a notification.")
             }
             items(schedules, key = { it.id }) { s ->
                 Card(Modifier.fillMaxWidth()) {
@@ -146,11 +162,11 @@ fun ScheduleScreen(
 }
 
 @Composable
-private fun Warning(text: String, onFix: () -> Unit) {
+private fun Warning(text: String, onFix: () -> Unit, action: String = "Open settings") {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(text, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = onFix) { Text("Open settings") }
+            TextButton(onClick = onFix) { Text(action) }
         }
     }
 }
@@ -205,10 +221,10 @@ private fun AddDialog(onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
                 if (target == Target.OTHER) {
                     Box {
                         OutlinedButton(onClick = { choosingApp = true }) {
-                            Text("App: " + (apps.firstOrNull { it.first == app }?.second ?: "ask when sending"))
+                            Text("App: " + (apps.firstOrNull { it.first == app }?.second ?: "choose"))
                         }
                         DropdownMenu(expanded = choosingApp, onDismissRequest = { choosingApp = false }) {
-                            (listOf("" to "Ask when sending") + apps).forEach { (id, name) ->
+                            apps.forEach { (id, name) ->
                                 DropdownMenuItem(
                                     text = { Text(name) },
                                     onClick = {
@@ -240,6 +256,7 @@ private fun AddDialog(onDismiss: () -> Unit, onSave: (Schedule) -> Unit) {
         confirmButton = {
             TextButton(onClick = {
                 error = validate(target, phone, message, time, System.currentTimeMillis())
+                    ?: if (target == Target.OTHER && app.isEmpty()) "Choose an app" else null
                 if (error == null) {
                     val number = if (target.needsPhone) cleanPhone(phone) else ""
                     val chosen = if (target == Target.OTHER) app else ""
